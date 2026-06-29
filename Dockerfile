@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # --- build stage ---
-FROM golang:1.24 AS build
+FROM golang:1.26.4 AS build
 WORKDIR /src
 
 # Download modules first so the layer caches across source-only changes.
