@@ -1,0 +1,17 @@
+# compiled binaries
+/bin/
+/out/
+*.exe
+
+# test & coverage output
+*.out
+coverage.*
+
+# local env files (never commit secrets)
+.env
+.env.*
+
+# editor / OS
+.idea/
+.vscode/
+.DS_Store
