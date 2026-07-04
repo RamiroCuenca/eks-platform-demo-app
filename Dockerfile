@@ -1,7 +1,10 @@
 # syntax=docker/dockerfile:1
 
 # --- build stage ---
-FROM golang:1.26.4 AS build
+# Pinned to the build host's platform so a multi-arch build compiles once,
+# natively, and lets Go cross-compile per target — no QEMU emulation of the
+# compiler. The runtime stage has no RUN steps, so emulation is never needed.
+FROM --platform=$BUILDPLATFORM golang:1.26.4 AS build
 WORKDIR /src
 
 # Download modules first so the layer caches across source-only changes.
@@ -10,7 +13,9 @@ RUN go mod download
 
 COPY . .
 # Static, stripped binary; no cgo so it runs on the distroless static base.
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/app ./cmd/server
+# TARGETOS/TARGETARCH are supplied by buildx per --platform entry.
+ARG TARGETOS TARGETARCH
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/app ./cmd/server
 
 # --- runtime stage ---
 FROM gcr.io/distroless/static-debian12:nonroot

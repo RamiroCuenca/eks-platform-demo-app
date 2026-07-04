@@ -1,0 +1,27 @@
+# Automated dependency updates: action pins and Go modules. Both apply a
+# seven-day cooldown -- freshly published versions are the window where a
+# hijacked tag or broken release is most likely to ship and least likely to
+# have been caught; waiting costs nothing at a weekly cadence and keeps the
+# Trivy/CodeQL gates quiet instead of chasing day-zero releases.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      gomod:
+        patterns:
+          - "*"

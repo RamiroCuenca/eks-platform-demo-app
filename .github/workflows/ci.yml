@@ -55,7 +55,49 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
 
-# NOTE: ECR push + gitops image-tag promotion land in a follow-up once the infra repo
-# creates the private ECR repository and the app's CI OIDC role. They add a job gated on
-# `github.ref == 'refs/heads/main' && github.event_name == 'push'` that assumes the role via
-# OIDC, pushes the image, then commits the new tag into the eks-platform-gitops repo.
+  # Runs only on merges to main, and only after the build/test and scan gates
+  # pass. Pull requests never reach this job and never hold a cloud identity:
+  # the CI role's OIDC trust policy is pinned to ref:refs/heads/main, so a
+  # token minted for a PR cannot even assume it.
+  publish:
+    name: publish image
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [test, image-scan]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC token exchange with AWS -- no static keys exist anywhere
+    env:
+      AWS_REGION: ap-northeast-1
+      IMAGE: ${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-1.amazonaws.com/eks-platform/demo-app:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - name: authenticate to AWS
+        uses: aws-actions/configure-aws-credentials@e7f100cf4c008499ea8adda475de1042d6975c7b # v6.2.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/eks-platform-ci-app
+          aws-region: ${{ env.AWS_REGION }}
+      - name: log in to ECR
+        run: |
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin "${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+      # One immutable tag per merge: the full commit SHA. The registry rejects
+      # any attempt to repoint an existing tag, so the tag promoted into the
+      # gitops repo is provably this build. Multi-arch (amd64 + arm64) because
+      # the cluster's node pools are Graviton-first with an amd64 fallback;
+      # the Dockerfile cross-compiles, so no QEMU setup is required.
+      # --provenance=false keeps the pushed artifact a plain OCI image index
+      # instead of attaching attestation manifests that surface as confusing
+      # untagged entries in ECR.
+      - name: build and push (linux/amd64, linux/arm64)
+        run: |
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --tag "$IMAGE" \
+            --provenance=false \
+            --push .
+
+# NOTE: the gitops image-tag promotion (committing the new tag into
+# eks-platform-gitops) lands together with that repo's go-demo chart -- there is
+# no values file to update until the chart exists.
