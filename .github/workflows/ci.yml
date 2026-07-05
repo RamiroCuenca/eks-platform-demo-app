@@ -98,6 +98,45 @@ jobs:
             --provenance=false \
             --push .
 
-# NOTE: the gitops image-tag promotion (committing the new tag into
-# eks-platform-gitops) lands together with that repo's go-demo chart -- there is
-# no values file to update until the chart exists.
+  # Promotion: move the gitops repo's pinned image tag to the artifact just
+  # published. Deliberately a pull request, not a direct push -- the gitops
+  # main branch is protected, and the promotion should pass the same
+  # validation gates (kubeconform, helm, semgrep, gitleaks) as any human
+  # change. Auto-merge lands it once they're green; ArgoCD reconciles main.
+  # Auth is a fine-grained PAT (GITOPS_TOKEN: Contents + Pull requests on the
+  # gitops repo only) -- GITHUB_TOKEN cannot cross repositories.
+  promote:
+    name: promote image tag to gitops
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [publish]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: checkout gitops repo
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: RamiroCuenca/eks-platform-gitops
+          token: ${{ secrets.GITOPS_TOKEN }}
+      - name: point the go-demo chart at the new tag
+        run: |
+          sed -i -E "s|^(  tag: )\"[0-9a-f]{40}\"|\\1\"${GITHUB_SHA}\"|" workloads/go-demo/values.yaml
+          # sed exits 0 even when nothing matched -- verify the tag actually landed.
+          grep -q "tag: \"${GITHUB_SHA}\"" workloads/go-demo/values.yaml
+      - name: open auto-merged promotion PR
+        env:
+          GH_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+        run: |
+          if git diff --quiet; then
+            echo "tag already current; nothing to promote"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          BRANCH="promote/${GITHUB_SHA}"
+          git checkout -b "$BRANCH"
+          git commit -am "chore: promote demo-app image ${GITHUB_SHA:0:12}"
+          git push origin "$BRANCH"
+          gh pr create --repo RamiroCuenca/eks-platform-gitops --base main --head "$BRANCH" \
+            --title "chore: promote demo-app image ${GITHUB_SHA:0:12}" \
+            --body "Automated promotion from RamiroCuenca/eks-platform-demo-app@${GITHUB_SHA}. The tag is immutable in ECR, so this pins exactly the artifact that passed the build, test, and container-scan gates. Merges automatically once this repository's validation checks pass."
+          gh pr merge --repo RamiroCuenca/eks-platform-gitops "$BRANCH" --auto --squash --delete-branch
