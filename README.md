@@ -16,8 +16,10 @@ This is one of three repositories:
 | **`eks-platform-demo-app`** (this repo) | Application source + its build/test/scan/push pipeline |
 | `eks-platform-gitops` | Kubernetes manifests, reconciled by ArgoCD |
 
-New images built here are promoted by a CI commit that updates the image tag in the gitops
-repository, so every deployment is an auditable Git event.
+New images built here are promoted by a CI-opened pull request that updates the image tag
+in the gitops repository, merged automatically once that repository's validation gates
+pass, so every deployment is an auditable Git event that cleared the same checks as a
+human change.
 
 ## Endpoints
 
