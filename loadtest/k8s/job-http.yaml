@@ -1,0 +1,55 @@
+# HTTP/CPU load profile as an in-cluster Job: drives /db and /cache past the
+# HPA target so the server scales out and Karpenter provisions nodes. Runs in
+# the default-deny `loadtest` namespace (created by the gitops repo's
+# network-policies chart) next to its egress policy — see README.md here for
+# the ConfigMap + apply steps.
+#
+# No CPU limit on the generator: throttling k6 caps the load it exists to
+# produce — the same reasoning the server Deployment documents for the HPA.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-http
+  namespace: loadtest
+  labels:
+    app: k6
+    app.kubernetes.io/part-of: loadtest
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: k6
+        app.kubernetes.io/part-of: loadtest
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          # Official image; runs as the unprivileged k6 user (12345).
+          image: grafana/k6:2.1.0
+          args: ["run", "/scripts/http.js"]
+          env:
+            - name: BASE_URL
+              value: http://go-demo.demo.svc.cluster.local
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 12345
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 500m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: scripts
+          configMap:
+            name: k6-scripts

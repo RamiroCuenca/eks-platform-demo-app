@@ -1,0 +1,26 @@
+# Egress half of the load path. The loadtest namespace sits on the gitops
+# repo's default-deny floor (DNS-only egress), so k6 needs an explicit allow
+# to reach the demo service — Cilium evaluates the policy against the
+# post-load-balancing backend, hence pod labels and the container port, not
+# the Service. The matching ingress allow is workload-owned and lives in the
+# go-demo chart, so both ends of the flow are declared by their own side.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-k6-to-go-demo
+  namespace: loadtest
+  labels:
+    app.kubernetes.io/part-of: loadtest
+spec:
+  endpointSelector:
+    matchLabels:
+      app: k6
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: demo
+            app: go-demo-server
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP

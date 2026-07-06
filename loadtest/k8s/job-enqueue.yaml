@@ -1,0 +1,49 @@
+# Queue load profile as an in-cluster Job: floods /enqueue so the Redis list
+# outgrows what the workers drain, building the backlog KEDA's Redis-list
+# scaler reacts to. Same execution model as job-http.yaml.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-enqueue
+  namespace: loadtest
+  labels:
+    app: k6
+    app.kubernetes.io/part-of: loadtest
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: k6
+        app.kubernetes.io/part-of: loadtest
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:2.1.0
+          args: ["run", "/scripts/enqueue.js"]
+          env:
+            - name: BASE_URL
+              value: http://go-demo.demo.svc.cluster.local
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 12345
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 500m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: scripts
+          configMap:
+            name: k6-scripts
