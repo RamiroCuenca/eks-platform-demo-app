@@ -83,3 +83,12 @@ Go source by CodeQL on every pull request.
 k6 run loadtest/http.js      # CPU/HTTP load → HPA + Karpenter
 k6 run loadtest/enqueue.js   # queue backlog → KEDA Redis scaler
 ```
+
+Against the cluster they run as Kubernetes Jobs — the service is
+deliberately cluster-internal, so the generator goes to the service. The
+same script files travel into a ConfigMap and execute from a hardened
+`grafana/k6` pod in the default-deny `loadtest` namespace; see
+[`loadtest/k8s/`](loadtest/k8s/) for the manifests, the required network
+allow, and the run/re-run steps. The scripts' pass thresholds match the
+platform's Prometheus alert thresholds, so a failed load gate and a firing
+alert corroborate each other.
