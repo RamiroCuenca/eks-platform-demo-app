@@ -73,7 +73,9 @@ make docker    # build the container image
 
 Multi-stage build → `gcr.io/distroless/static-debian12:nonroot`: a static, non-root,
 shell-less final image. The image is scanned by Trivy (HIGH/CRITICAL fail the build) and the
-Go source by CodeQL on every pull request.
+Go source by CodeQL on every pull request. The running service was also scanned live with an
+OWASP ZAP baseline — **66 pass / 1 low-severity warn / 0 fail**, security-header middleware
+verified at runtime ([evidence](https://github.com/RamiroCuenca/eks-production-platform/tree/main/docs/screenshots/app)).
 
 ## Load tests
 
@@ -92,3 +94,9 @@ same script files travel into a ConfigMap and execute from a hardened
 allow, and the run/re-run steps. The scripts' pass thresholds match the
 platform's Prometheus alert thresholds, so a failed load gate and a firing
 alert corroborate each other.
+
+A captured run of both profiles against the live platform — the HTTP profile
+sustaining ~1,851 req/s (0% failed, p95 8.95 ms) through HPA scale-out with
+Karpenter provisioning, and the queue profile driving the KEDA worker's full
+0→10→0 lifecycle — is documented in the platform repo's
+[load-test evidence](https://github.com/RamiroCuenca/eks-production-platform/tree/main/docs/screenshots/loadtest).
